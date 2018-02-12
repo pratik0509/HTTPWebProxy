@@ -17,13 +17,13 @@ class ProxyServer:
 		# Create a TCP socket
 		self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		self.serverSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-		
+
 		# Bind the socket to the host and the port.
 		self.serverSocket.bind((config.HOST_NAME, config.BIND_PORT))
-		
+
 		# Limit the maximum number of connections to 10
 		self.serverSocket.listen(config.MAX_CONNECTIONS)
-		
+
 		# Initialise the clients dictionary
 		self.__clients = {}
 
@@ -43,7 +43,7 @@ class ProxyServer:
 			thread.setDaemon(True)
 			thread.start()
 
-			self.shutdown_handler(0,0)
+		self.shutdown_handler(0,0)
 
 
 	def proxy_thread(self, conn, client_addr):
@@ -53,9 +53,9 @@ class ProxyServer:
 
 		# Receive request from the browser
 		request = conn.recv(config.MAX_REQUEST_LEN)
-		
+
 		# Parse the first line
-		first_line = request.split('\n')[0]
+		first_line = request.decode().split('\n')[0]
 
 		# Get URL
 		url = first_line.split(' ')[1]
@@ -93,7 +93,7 @@ class ProxyServer:
 			sck.connect((webserver, port))
 
 			# Send the received request from the browser to the web server
-			sck.sendall(request)
+			sck.sendall(request.encode('utf-8'))
 
 			# Redirect all responses from the web server to the browser
 			while True:
