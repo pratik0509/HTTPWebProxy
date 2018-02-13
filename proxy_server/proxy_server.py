@@ -4,125 +4,124 @@ import signal
 import threading
 import config as config
 
-
 class ProxyServer:
-	""" The proxy server class """
+	'''
+	Class for main proxy server
+	'''
+
+	def close_socket(self):
+		self.server_socket.close()
+		return
 
 	def __init__(self, config):
-		""" Intialiser function for ProxyServer class """
+		print('Initialising TCP/IPv4 socket connection')
+		self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		# Reusing the already open Socket to avoid irritating errors
+		self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-		# Register shutdown handler with SIGINT (Ctrl + c)
-		signal.signal(signal.SIGINT, self.shutdown_handler)
+		print('Binding socket to port %s and host %s' %
+			(config.BIND_PORT, config.HOST_NAME))
+		self.server_socket.bind((config.HOST_NAME, config.BIND_PORT))
 
-		# Create a TCP socket
-		self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		self.serverSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+		print('Listen to the specified port %s' % config.BIND_PORT)
+		self.server_socket.listen(config.MAX_CONNECTIONS)
 
-		# Bind the socket to the host and the port.
-		self.serverSocket.bind((config.HOST_NAME, config.BIND_PORT))
+		signal.signal(signal.SIGTERM, self.close_socket)
+		return
 
-		# Limit the maximum number of connections to 10
-		self.serverSocket.listen(config.MAX_CONNECTIONS)
+	def __parse_request_header(self, request):
+		# Splitting request
+		split_req = request.split(' ')
 
-		# Initialise the clients dictionary
-		self.__clients = {}
+		method = split_req[0]
+		url = split_req[1]
+		http_ver = split_req[2]
 
-		print ('The proxy server is running on port ' + str(config.BIND_PORT))
+		return method, url, http_ver
 
+	def start_accepting(self):
 
-	def start_listening(self):
-		""" Start listening on the mentioned port number for client connections """
-
-		# Infinite loop until SIGINT is fired.
+		# Forever accept
 		while True:
-			# Establish connection
-			(client_socket, client_address) = self.serverSocket.accept()
+			(client_socket, addr) = self.server_socket.accept()
 
-			# Create a proxy thread for the established connection
-			thread = threading.Thread(name=self._getClientName(client_address), target=self.proxy_thread, args=(client_socket, client_address))
-			thread.setDaemon(True)
-			thread.start()
+			print('\n================REQUEST INITIATED==================\n')
+			print('Receiving request from Client')
+			client_req = client_socket.recv(config.MAX_REQUEST_LEN).decode()
 
-		self.shutdown_handler(0,0)
+			print('Separating client request line by line')
+			parsed_req = client_req.split(config.JOIN_DELIM)
 
+			# Parsing the First line of HTTP request header
+			print('Parsing')
+			print(parsed_req[0])
+			req_method, req_url, req_http_ver = self.__parse_request_header(
+																parsed_req[0]
+																	);
 
-	def proxy_thread(self, conn, client_addr):
-		"""
-			A thread which is acting as a proxy between the browser and the web server.
-		"""
+			# Printing parsed information
+			print(req_method)
+			print(req_url)
+			print(req_http_ver)
 
-		# Receive request from the browser
-		request = conn.recv(config.MAX_REQUEST_LEN)
+			# Calculating the start of host name
+			host_start_pos = req_url.find(config.HTTP_REQUEST) +\
+			 					len(config.HTTP_REQUEST)
+			# Calculating the end of host name
+			host_end_pos = req_url.find(config.HOST_DELIMITER, host_start_pos)
+			# Calculating start of Port number
+			port_start_pos = host_end_pos + 1
+			# Calculating start of Host number
+			port_end_pos = req_url.find(config.PORT_DELIMITER, port_start_pos)
 
-		# Parse the first line
-		first_line = request.decode().split('\n')[0]
+			# Printing Host Name
+			print('HOST NAME:')
+			req_host_name = req_url[host_start_pos: host_end_pos]
+			print(req_host_name)
+			# Printing Port Name
+			print('PORT NUMBER:')
+			req_port_num = req_url[port_start_pos: port_end_pos]
+			print(req_port_num)
+			# Printing File Name
+			print('FILE NAME:')
+			req_file_name = req_url[port_end_pos + 1 : ]
+			print(req_file_name)
 
-		# Get URL
-		url = first_line.split(' ')[1]
+			try:
+				# Forming request
+				print('Forming Request to original host')
+				parsed_req[0] = '%s /%s %s' % (req_method, req_file_name, req_http_ver)
+				print(parsed_req[0])
+				host_req = config.JOIN_DELIM.join(parsed_req)
 
-		# Copy the webserver address in http_pos by searching for '://'
-		http_pos = url.find("://")
-		if (http_pos == -1):
-			temp = url
-		else:
-			temp = url[(http_pos + 3) : ]
+				# Initialising connection to the Requested Host Socket
+				host_socket = socket.socket()
+				host_socket.connect((req_host_name, int(req_port_num)))
 
-		# Copy the port number in port by searching for ':' in the remaining address
-		port_pos = temp.find(":")
+				# Forwarding Request to Host
+				print('requesting to the Host')
+				host_socket.send(host_req.encode())
 
-		webserver_pos = temp.find("/")
-		if webserver_pos == -1:
-			webserver_pos = len(temp)
+				# Receiving request from Host
+				host_resp = host_socket.recv(config.MAX_REQUEST_LEN)
+				# Forwarding request from Host to Client
+				client_socket.send(host_resp)
 
-		webserver = ""
-		port = -1
+				data = host_socket.recv(config.MAX_REQUEST_LEN)
+				while  data:
+					client_socket.send(data)
+					data = host_socket.recv(config.MAX_REQUEST_LEN)
 
-		# Set the port number to 80 (default) if not found
-		if (port_pos == -1 or webserver_pos < port_pos):
-			port = DEFAULT_PORT
-			webserver = temp[:webserver_pos]
-		else:
-			port = int((temp[(port_pos + 1): ])[: webserver_pos - port_pos - 1])
-			webserver = temp[: port_pos]
+				print('Client request fulfilled..!!')
+			except Exception as err:
+				print('Unexpected Error Occurred on Connecting to Host')
+				print(err)
+			# Closing the Host Sockets
+			host_socket.close()
+			# Closing the Client Sockets
+			client_socket.close()
+			print('\n=================REQUEST TERMINATED==================\n')
 
-		try:
-			# Connect to the web server through a new socket
-			sck = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-			sck.settimeout(config.CONNECTION_TIMEOUT)
-			sck.connect((webserver, port))
-
-			# Send the received request from the browser to the web server
-			sck.sendall(request.encode('utf-8'))
-
-			# Redirect all responses from the web server to the browser
-			while True:
-			    data = sck.recv(config.MAX_REQUEST_LEN)
-			    if len(data):
-			        conn.send(data)
-			    else:
-			        break
-			sck.close()
-			conn.close()
-		except socket.error as error_msg:
-			print ('ERROR: ', client_addr,error_msg)
-			if sck:
-				sck.close()
-			if conn:
-				conn.close()
-
-
-	def _getClientName(self, cli_addr):
-		""" returns the Client Name on the basis of cli_addr """
-		return "Client"
-
-
-	def shutdown_handler(self, signum, frame):
-		""" Handle the exiting server and clean all traces """
-		self.serverSocket.close()
-		sys.exit(0)
-
-
-if __name__ == "__main__":
+if '__main__' == __name__:
 	server = ProxyServer(config)
-	server.start_listening()
+	server.start_accepting()

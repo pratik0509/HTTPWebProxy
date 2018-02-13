@@ -8,7 +8,9 @@ PORT = 20000
 class HTTPCacheRequestHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
     def send_head(self):
         if self.command != "POST" and self.headers.get('If-Modified-Since', None):
-            filename = self.path.strip("/")
+            print 'send'
+            print self.path
+            filename = self.path.strip("/").split("/")[3]
             if os.path.isfile(filename):
                 a = time.strptime(time.ctime(os.path.getmtime(filename)), "%a %b %d %H:%M:%S %Y")
                 b = time.strptime(self.headers.get('If-Modified-Since', None), "%a, %d %b %Y %H:%M:%S %Z")
@@ -20,6 +22,7 @@ class HTTPCacheRequestHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
 
     def end_headers(self):
         filename = self.path.strip("/")
+        print filename
         if filename == "2.binary":
             self.send_header('Cache-control', 'no-cache')
         else:
