@@ -103,9 +103,11 @@ class ProxyServer:
 			parsed_req[0] = '%s /%s %s' % (req_method, req_file_name, req_http_ver)
 
 			last_modified = None
+			cached_data = None
 			for i in range(config.CACHE_SIZE):
 				if self.__cache[i] != None and self.__cache[i]["req_url"] == req_url:
 					last_modified = self.__cache[i]["Date"]
+					cached_data = self.__cache[i]["data"]
 			if last_modified != None:
 				parsed_req.insert(2, config.MODIFIED_SINCE + ': ' + last_modified[1:])
 
@@ -126,8 +128,16 @@ class ProxyServer:
 			# Decoding host response
 			decoded_host_resp = host_resp.decode()
 
+			host_status_code = decoded_host_resp.split(' ')[1]
+
 			# Forwarding request from Host to Client
-			client_socket.sendall(host_resp)
+			if host_status_code == "304" or host_status_code == "200" :
+				client_socket.sendall(config.STATUS_OK.encode())
+			else:
+				client_socket.sendall(host_resp)
+
+			if (host_status_code == "304"):
+				client_socket.sendall(cached_data)
 
 			data = host_socket.recv(config.MAX_REQUEST_LEN)
 			final = data
@@ -136,7 +146,10 @@ class ProxyServer:
 				final = final + data
 				data = host_socket.recv(config.MAX_REQUEST_LEN)
 
-			resp_obj = final.decode('utf-8').split(config.JOIN_DELIM)
+			try:
+				resp_obj = final.decode('utf-8').split(config.JOIN_DELIM)
+			except:
+				resp_obj = final.decode('latin-1').split(config.JOIN_DELIM)
 
 			date = ""
 			cache_control = ""
@@ -144,32 +157,31 @@ class ProxyServer:
 				curr = resp_obj[i].split(':', 1)
 				if (curr[0] == "Date"):
 					date = curr[1]
-					# time.strptime(curr[1], " %a, %d %b %Y %H:%M:%S %Z")
 				elif (curr[0] == "Cache-control"):
 					cache_control = curr[1]
 
-			curr_resp = {
-				"Date": date,
-				"Cache-control": cache_control,
-				"data": final,
-				"req_url": req_url
-			}
+			if cache_control != " no-cache" and host_status_code != "304":
+				curr_resp = {
+					"Date": date,
+					"Cache-control": cache_control,
+					"data": final,
+					"req_url": req_url
+				}
 
-			temp = curr_resp
-			for i in range(config.CACHE_SIZE):
-				print(i)
-				self.__cache[i], temp = temp, self.__cache[i]
-				if temp == None or temp["req_url"] == req_url:
-					break
+				temp = curr_resp
+				for i in range(config.CACHE_SIZE):
+					print(i)
+					self.__cache[i], temp = temp, self.__cache[i]
+					if temp == None or temp["req_url"] == req_url:
+						break
 
-			print("CACHE: ")
-			print(self.__cache)
-			print("-----------------RESPONSE END")
+			print("CACHE MEMORY: ", self.__cache)
 
 			print('Client request fulfilled..!!')
 		except Exception as err:
 			print('Unexpected Error Occurred on Connecting to Host:')
 			print(err)
+
 		# Closing the Host Sockets
 		host_socket.close()
 		print('\n=================REQUEST TERMINATED==================\n')
