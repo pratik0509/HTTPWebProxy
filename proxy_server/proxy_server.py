@@ -3,11 +3,14 @@ import sys
 import signal
 import threading
 import config as config
+import time
 
 class ProxyServer:
 	'''
 	Class for main proxy server
 	'''
+	
+	__cache = [None] * config.CACHE_SIZE
 
 	def close_socket(self):
 		self.server_socket.close()
@@ -26,6 +29,7 @@ class ProxyServer:
 
 		print('Listen to the specified port %s' % config.BIND_PORT)
 		self.server_socket.listen(config.MAX_CONNECTIONS)
+
 
 		signal.signal(signal.SIGTERM, self.close_socket)
 		return
@@ -87,8 +91,16 @@ class ProxyServer:
 			# Forming request
 			print('Forming Request to original host')
 			parsed_req[0] = '%s /%s %s' % (req_method, req_file_name, req_http_ver)
-			print(parsed_req[0])
+
+			last_modified = None
+			for i in range(config.CACHE_SIZE):
+				if self.__cache[i] != None and self.__cache[i]["req_url"] == req_url:
+					last_modified = self.__cache[i]["Date"]
+			if last_modified != None:
+				parsed_req.insert(2, config.MODIFIED_SINCE + ': ' + last_modified[1:])
+
 			host_req = config.JOIN_DELIM.join(parsed_req)
+			print(parsed_req)
 
 			# Initialising connection to the Requested Host Socket
 			host_socket = socket.socket()
@@ -100,13 +112,49 @@ class ProxyServer:
 
 			# Receiving request from Host
 			host_resp = host_socket.recv(config.MAX_REQUEST_LEN)
+
+			# Decoding host response
+			decoded_host_resp = host_resp.decode()
+
 			# Forwarding request from Host to Client
 			client_socket.send(host_resp)
 
 			data = host_socket.recv(config.MAX_REQUEST_LEN)
+			final = data
 			while  data:
 				client_socket.send(data)
+				final = final + data
 				data = host_socket.recv(config.MAX_REQUEST_LEN)
+
+			resp_obj = final.decode('utf-8').split(config.JOIN_DELIM)
+
+			date = ""
+			cache_control = ""
+			for i in range(len(resp_obj)):
+				curr = resp_obj[i].split(':', 1)
+				if (curr[0] == "Date"):
+					date = curr[1]
+					# time.strptime(curr[1], " %a, %d %b %Y %H:%M:%S %Z")
+				elif (curr[0] == "Cache-control"):
+					cache_control = curr[1]
+
+			curr_resp = {
+				"Date": date,
+				"Cache-control": cache_control,
+				"data": final,
+				"req_url": req_url
+			}
+
+			temp = curr_resp
+			for i in range(config.CACHE_SIZE):
+				print(i)
+				self.__cache[i], temp = temp, self.__cache[i]
+				if temp == None or temp["req_url"] == req_url:
+					break
+
+			print("CACHE: ")
+			print(self.__cache)
+			print("-----------------RESPONSE END")
 
 			print('Client request fulfilled..!!')
 		except Exception as err:
