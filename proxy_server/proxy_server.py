@@ -9,7 +9,7 @@ class ProxyServer:
 	'''
 	Class for main proxy server
 	'''
-	
+
 	__cache = [None] * config.CACHE_SIZE
 
 	def close_socket(self):
@@ -108,7 +108,7 @@ class ProxyServer:
 
 			# Forwarding Request to Host
 			print('Requesting to the Host')
-			host_socket.send(host_req.encode())
+			host_socket.sendall(host_req.encode())
 
 			# Receiving request from Host
 			host_resp = host_socket.recv(config.MAX_REQUEST_LEN)
@@ -117,12 +117,12 @@ class ProxyServer:
 			decoded_host_resp = host_resp.decode()
 
 			# Forwarding request from Host to Client
-			client_socket.send(host_resp)
+			client_socket.sendall(host_resp)
 
 			data = host_socket.recv(config.MAX_REQUEST_LEN)
 			final = data
 			while  data:
-				client_socket.send(data)
+				client_socket.sendall(data)
 				final = final + data
 				data = host_socket.recv(config.MAX_REQUEST_LEN)
 
