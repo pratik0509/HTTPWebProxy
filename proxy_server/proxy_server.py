@@ -87,6 +87,16 @@ class ProxyServer:
 		req_file_name = req_url[port_end_pos + 1 : ]
 		print(req_file_name)
 
+		if len(req_port_num) < 3:
+			req_port_num = '80'
+			req_host_name = parsed_req[1].split(':')[1][1:]
+
+		try:
+			temp = int(req_port_num)
+		except:
+			req_host_name = parsed_req[1].split(':')[1][1:]
+			req_port_num = '80'
+
 		try:
 			# Forming request
 			print('Forming Request to original host')
