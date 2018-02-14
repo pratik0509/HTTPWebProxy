@@ -87,21 +87,23 @@ class ProxyServer:
 		req_file_name = req_url[port_end_pos + 1 : ]
 		print(req_file_name)
 
+		# Forming request
+		print('Forming Request to original host')
+		parsed_req[0] = '%s /%s %s' % (req_method, req_file_name, req_http_ver)
+
 		if len(req_port_num) < 3:
 			req_port_num = '80'
 			req_host_name = parsed_req[1].split(':')[1][1:]
+			parsed_req[0] = '%s %s%s %s' % (req_method, config.HTTP_REQUEST, req_host_name, req_http_ver)
 
 		try:
 			temp = int(req_port_num)
 		except:
 			req_host_name = parsed_req[1].split(':')[1][1:]
 			req_port_num = '80'
+			parsed_req[0] = '%s %s%s %s' % (req_method, config.HTTP_REQUEST, req_host_name, req_http_ver)
 
 		try:
-			# Forming request
-			print('Forming Request to original host')
-			parsed_req[0] = '%s /%s %s' % (req_method, req_file_name, req_http_ver)
-
 			last_modified = None
 			cached_data = None
 			for i in range(config.CACHE_SIZE):
@@ -147,7 +149,7 @@ class ProxyServer:
 				data = host_socket.recv(config.MAX_REQUEST_LEN)
 
 			try:
-				resp_obj = final.decode('utf-8').split(config.JOIN_DELIM)
+				resp_obj = final.decode().split(config.JOIN_DELIM)
 			except:
 				resp_obj = final.decode('latin-1').split(config.JOIN_DELIM)
 
